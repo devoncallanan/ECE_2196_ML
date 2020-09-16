@@ -18,7 +18,7 @@ class ClassData:
         print("----------")
         print("name: " + str(self.name))
         print("COUNT: " + str(self.count))
-        print("greater than 20: ")
+        print("greater than 1000: ")
         for word in self.bag:
             if self.bag[word] > 1000:
                 print(word + " \t\t " + str(self.bag[word]))
@@ -75,26 +75,17 @@ def securethebag(text, bag):
 
     return bag
 
-# multinomial classification strategy
+# Naive Bayes
 def classify(trained_classes, file_bag):
     best = 0
     guess = ""
     for group in trained_classes:
         likelyhood = 1/20
         for word in file_bag:
-            # if word in group.bag:
-            #     likelyhood += file_bag[word]
-            # else:
-            #     likelyhood -= file_bag[word]
             if word in group.bag:
                 likelyhood *= group.bag[word]/(len(group.bag)/1000)
             else:
                 likelyhood *= 1/(len(group.bag)/10)
-        # print(likelyhood)
-            # if word in group.bag:
-            #     likelyhood *= ((group.bag[word] + 1)/(group.count+len(group.bag)))**file_bag[word]
-            # else:
-            #     likelyhood *= (1/(group.count + len(group.bag)))**file_bag[word]
         if likelyhood > best:
             best = likelyhood
             guess = group.name
@@ -123,9 +114,6 @@ for dir in dirs:
 
 print("++++++++++++++++++ TRAINED +++++++++++++++++++")
 
-# print(train_classes[0].name)
-# print(train_classes[0].count)
-# print(train_classes[0].bag)
 
 total = 0
 correct = 0
@@ -167,9 +155,9 @@ for dir in dirs:
             error += 1
 
 print("+++++++++++++++++++++ CLASSIFIED +++++++++++++++++++++++")
-print(correct)
-print(error)
-print(correct/total)
-print(error/total)
+# print(correct)
+# print(error)
+print("Correct: " + str((correct/total)*100) + "%")
+print("Incorrect: " + str((error/total)*100) + "%")
 
-print(guesses)
+# print(guesses)
