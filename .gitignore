@@ -131,3 +131,5 @@ dmypy.json
 
 # NaiveBayes
 NaiveBayes/20_newsgroups
+NaiveBayes/train_data
+NaiveBayes/test_data
