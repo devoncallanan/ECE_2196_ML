@@ -25,6 +25,10 @@ class DataSet:
                 continue
 
             img = Image.open(os.path.join(path,file))
+
+            img = img.resize((46,56))
+
+
             self.total_points +=1
             # we need to split the filename to get the image class
             img_class = int(file[:-4].split("_")[0]) - 1
@@ -134,7 +138,7 @@ class PCA:
 
     def test(self):
 
-        test_set = [self.test_set[30]]
+        # test_set = [self.test_set[30]]
         for img, truth in self.test_set:
             # print(truth)
             ## get the reduced dimension version
@@ -172,69 +176,109 @@ class PCA:
         Image.fromarray(img_vect).show()
         input()
 
-    def run(self):
+class LDA:
 
-        ## get average image vector
-        sum = numpy.zeros(self.train_set.vector_size)
-        for x, label in self.train_set:
-            sum += x
-        avg_vect = sum / self.train_set.total_points
 
-        # img_vect = numpy.reshape(avg_vect, (112,92))
-        # img = Image.fromarray(img_vect)
-        # img.show()
+    def __init__(self, dataset):
+        self.data = dataset
 
-        ## normalize all images by average and create A matrix
-        A = numpy.zeros((self.train_set.num_classes*self.train_set.class_size, self.train_set.vector_size))
-        for i in range(len(self.train_set)):
-            x, label = self.train_set[i]
-            A[i] = x - avg_vect
+        self.train_set, self.test_set = self.data.five_fold_data(1)
 
-        print(A.shape)
+    def train(self):
+        print("training")
 
-        sigma = numpy.matmul(numpy.transpose(A),A)
-        L = numpy.matmul(A,numpy.transpose(A))
-        print(L.shape)
 
-        # w, v = numpy.linalg.eig(L)
-        # print(v)
-        U, S, V = numpy.linalg.svd(A)
-        print(V.shape)
-        basis = V
+        ## get means for each class
+        means = []
+        for group in self.train_set.classes:
+            mean = numpy.zeros(self.train_set.vector_size)
+            for img in group:
+                mean += img
+            mean = mean/self.train_set.num_classes
+            means.append(mean)
+        print("means done")
 
-        # basis = [numpy.matmul(eig, A) for eig in v]
+        ## within class scatter
+        Sw = numpy.zeros((self.train_set.vector_size,self.train_set.vector_size))
+        for i in range(len(self.train_set.classes)):
+            group = self.train_set.classes[i]
+            mean = means[i]
+            class_scatter = numpy.zeros((self.train_set.vector_size,self.train_set.vector_size))
+            # res = numpy.zeros((self.train_set.vector_size,self.train_set.vector_size))
+            # print("zeros " + str(class_scatter.shape))
+            for img in group:
+                variance = numpy.reshape( (img-mean),(self.train_set.vector_size,1))
+                class_scatter += numpy.dot(variance, variance.T)
+                # print(str(variance.shape) + " : " + str(class_scatter.shape) + " = " + str(res))
+                # class_scatter += res
+            Sw += class_scatter
 
-        # for eig in basis:
-        #     print(eig)
-        #     img_vect = numpy.reshape(eig, (112,92))
-        #     img = Image.fromarray(img_vect)
-        #     img.show()
-        #     input()
+        print("Sw scatter done " + str(Sw.shape))
+        # print(Sw)
 
-        imgx, label = self.train_set[0]
-        # a = numpy.dot()
-        # a = numpy.zeros((1,self.train_set.num_classes*self.train_set.class_size))
-        a = numpy.zeros((1,self.train_set.vector_size))
-        for i in range(100):
-            dim = basis[i]
-            a[0][i] = numpy.dot(numpy.transpose(dim), imgx - avg_vect)
+        big_mean = numpy.zeros(self.train_set.vector_size)
+        for mean in means:
+            big_mean += mean
+        big_mean /= len(means)
 
-        # reconstruct
-        imgy = numpy.zeros((1, self.train_set.vector_size))
-        for i in  range(100):
-            dim = basis[i]
-            res = a[0][i] * dim
-            # print(dim)
-            # print(a[0][i])
-            # print(res)
-            imgy += res
 
-        imgy += avg_vect
-        print(imgy)
-        img_vect = numpy.reshape(imgy, (112,92))
-        img = Image.fromarray(img_vect)
-        img.show()
+        ## between class scatter
+        Sb = numpy.zeros((self.train_set.vector_size,self.train_set.vector_size))
+        for i in range(len(self.train_set.classes)):
+            group = self.train_set.classes[i]
+            mean = means[i]
+            Sb += len(group)*numpy.matmul((mean-big_mean), (mean-big_mean).T)
 
+        print("Sb scatter done " + str(Sb.shape))
+
+        ## solve Sb*v = lambda*Sw*v => Sw^-1*Sb*v = lambda*v
+        ## eigenvalue problem
+        lhs = numpy.dot(numpy.linalg.inv(Sw), Sb)
+        print("computed inverse")
+        u, v = numpy.linalg.eig(lhs)
+        # print(u)
+        v = v[:,:40]
+
+
+        print("Eigen decomp done " +  str(v.shape))
+
+        points_for_knn = []
+        for img, label in self.train_set:
+            reduced = numpy.matmul(img, v)
+            points_for_knn.append((reduced, label))
+
+        print("points transformed")
+
+        self.v = v
+        self.points_for_knn = points_for_knn
+
+        return v, points_for_knn
+
+
+    def test(self):
+
+        # test_set = [self.test_set[30]]
+        for img, truth in self.test_set:
+            # print(truth)
+            ## get the reduced dimension version
+            test_point = numpy.matmul(img, self.v)
+            # print(test_point)
+
+            ## find shortest distance
+            min_dist = numpy.inf
+            prediction = -1
+            for point, label in self.points_for_knn:
+                # print(point)
+                dist = numpy.linalg.norm(point-test_point)
+                # print(label)
+                # print(dist)
+                if dist < min_dist:
+                    min_dist = dist
+                    prediction = label
+            if prediction == truth:
+                print("corr " + str(prediction))
+            else:
+                print("false " + str(prediction))
 
 
 if __name__ == "__main__":
@@ -250,9 +294,13 @@ if __name__ == "__main__":
     # dataset.load("./smallset")
     dataset.load("./Face Data for Homework/ATT")
 
-    pca = PCA(dataset)
-    avg, basis, points = pca.train(1000)
-    pca.test()
+    # pca = PCA(dataset)
+    # avg, basis, points = pca.train(1000)
+    # pca.test()
+
+    lda = LDA(dataset)
+    basis, points = lda.train()
+    lda.test()
 
     # pca.reconstruct(points[0])
     # pca.run()
