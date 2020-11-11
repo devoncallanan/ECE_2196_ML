@@ -26,7 +26,7 @@ class DataSet:
 
             img = Image.open(os.path.join(path,file))
 
-            img = img.resize((46,56))
+            # img = img.resize((46,56))
 
 
             self.total_points +=1
@@ -41,6 +41,7 @@ class DataSet:
 
             if self.vector_size == -1:
                 self.vector_size = len(point)
+                print(len(point))
             self.classes[img_class][img_num] = point
 
     def five_fold_data(self, fold_number):
@@ -78,12 +79,30 @@ class DataSet:
         # y = self.classification[int(index/self.class_size)]
         return x,y
 
+    def __setitem__(self, index, newval):
+        self.classes[int(index/self.class_size)][int(index%self.class_size)] = newval
+
+
 class PCA:
 
     def __init__(self, dataset):
         self.data = dataset
 
-        self.train_set, self.test_set = self.data.five_fold_data(1)
+
+    def run(self, cut_val):
+
+        ## array for changing cut size each fold
+        cuts = []
+
+        for fold in range(5):
+            self.train_set, self.test_set = self.data.five_fold_data(fold)
+
+            avg, basis, points, eigs = self.train(130)
+            # avg, basis, points, eigs = self.train((5-fold)*cut_val)
+            print(str(len(eigs)))
+            # print(",".join([str(eig) for eig in eigs]) + ",")
+            acc = self.test()
+            print(str(acc))
 
 
     def train(self, dimensions):
@@ -116,10 +135,16 @@ class PCA:
 
         basis = numpy.matmul(A, V)
 
-        ## make each basis a unit vector, sloppy but it helps reconstruction
+        # ## make each basis a unit vector, sloppy but it helps reconstruction
         basis = basis.T
         basis = numpy.array([dim/numpy.linalg.norm(dim) for dim in basis])
         basis = basis.T
+        # print(basis.shape)
+
+        # print(W)
+        ## cut basis down to dimension
+        basis = basis[:,:dimensions]
+        eigs = W[:dimensions]
 
         ## created reduced dim training data vectors
         points_for_knn = []
@@ -133,13 +158,16 @@ class PCA:
         self.basis = basis
         self.points_for_knn = points_for_knn
 
-        return avg_vect, basis, points_for_knn
+        return avg_vect, basis, points_for_knn, eigs
 
 
     def test(self):
 
-        # test_set = [self.test_set[30]]
+        good = 0
+        bad = 0
+        total = len(self.test_set)
         for img, truth in self.test_set:
+            # total += 1
             # print(truth)
             ## get the reduced dimension version
             test_point = numpy.matmul(self.basis.T, img-self.avg_vect)
@@ -155,9 +183,13 @@ class PCA:
                     min_dist = dist
                     prediction = label
             if prediction == truth:
-                print("corr")
-            else:
-                print("false " + str(prediction))
+                good += 1
+            #     print("corr")
+            # else:
+            #     bad += 1
+            #     print("false " + str(prediction))
+        # print(str(good) + " " + str(bad) + " " + str(total))
+        return good/total
 
     def reconstruct(self, point):
 
@@ -182,21 +214,60 @@ class LDA:
     def __init__(self, dataset):
         self.data = dataset
 
-        self.train_set, self.test_set = self.data.five_fold_data(1)
+        # self.train_set, self.test_set = self.data.five_fold_data(1)
 
-    def train(self):
+
+    def run(self, dims):
+
+        for fold in range(5):
+            self.train_set, self.test_set = self.data.five_fold_data(fold)
+
+            basis, points, eigs = self.train(dims)
+            # avg, basis, points, eigs = self.train((5-fold)*cut_val)
+            print(str(len(eigs)))
+            # print(",\n".join([str(eig) for eig in eigs]) + ",")
+            acc = self.test()
+            print(str(acc))
+
+    def pca_first(self, pca_dims, lda_dims):
+        for fold in range(5):
+            self.train_set, self.test_set = self.data.five_fold_data(fold)
+
+            pca = PCA(dataset)
+            pca.train_set = self.train_set
+            avg_vect, basis_pca, points, eig = pca.train(pca_dims)
+            self.pca_avg_vect = avg_vect
+            self.pca_basis = basis_pca
+
+            print("pca done")
+
+            ## points from pca
+            for i in range(len(self.train_set)):
+                self.train_set[i] = points[i][0]
+            self.train_set.vector_size = len(points[0][0])
+
+            basis, points, eigs = self.train(lda_dims)
+            # avg, basis, points, eigs = self.train((5-fold)*cut_val)
+            print(str(len(eigs)))
+            # print(",\n".join([str(eig) for eig in eigs]) + ",")
+            acc = self.pca_first_test()
+            print(str(acc))
+
+
+    def train(self, dims):
         print("training")
 
 
         ## get means for each class
         means = []
         for group in self.train_set.classes:
+            # print(group)
             mean = numpy.zeros(self.train_set.vector_size)
             for img in group:
                 mean += img
             mean = mean/self.train_set.num_classes
             means.append(mean)
-        print("means done")
+        # print("means done")
 
         ## within class scatter
         Sw = numpy.zeros((self.train_set.vector_size,self.train_set.vector_size))
@@ -213,7 +284,7 @@ class LDA:
                 # class_scatter += res
             Sw += class_scatter
 
-        print("Sw scatter done " + str(Sw.shape))
+        # print("Sw scatter done " + str(Sw.shape))
         # print(Sw)
 
         big_mean = numpy.zeros(self.train_set.vector_size)
@@ -229,15 +300,30 @@ class LDA:
             mean = means[i]
             Sb += len(group)*numpy.matmul((mean-big_mean), (mean-big_mean).T)
 
-        print("Sb scatter done " + str(Sb.shape))
+        # print("Sb scatter done " + str(Sb.shape))
 
         ## solve Sb*v = lambda*Sw*v => Sw^-1*Sb*v = lambda*v
         ## eigenvalue problem
+        ## psuedoinverse
+        # Sw_inv = numpy.dot(numpy.linalg.inv(numpy.dot(Sw.T, Sw)), Sw.T)
+        # lhs = numpy.dot(Sw_inv, Sb)
         lhs = numpy.dot(numpy.linalg.inv(Sw), Sb)
-        print("computed inverse")
-        u, v = numpy.linalg.eig(lhs)
+        # print("computed inverse")
+        u, v = numpy.linalg.eigh(lhs)
         # print(u)
-        v = v[:,:40]
+        ## we only want the c-1 basis of the largest variance so sort and slice
+        combined = []
+        for i in range(len(u)):
+            combined.append((u[i], v[:,i]))
+        combined = sorted(combined, key=lambda item: abs(item[0]), reverse=False)
+        basis = numpy.array([item[1] for item in combined])
+        # print([item[0] for item in combined])
+        # u = [item[0] for item in combined]
+        v = basis[:,:dims]
+        # print(combined)
+        # print(v)
+        # print(basis)
+        # v = v[:,:dims]
 
 
         print("Eigen decomp done " +  str(v.shape))
@@ -252,11 +338,13 @@ class LDA:
         self.v = v
         self.points_for_knn = points_for_knn
 
-        return v, points_for_knn
+        return v, points_for_knn, u
 
 
     def test(self):
 
+        good = 0
+        total = len(self.test_set)
         # test_set = [self.test_set[30]]
         for img, truth in self.test_set:
             # print(truth)
@@ -276,31 +364,77 @@ class LDA:
                     min_dist = dist
                     prediction = label
             if prediction == truth:
-                print("corr " + str(prediction))
-            else:
-                print("false " + str(prediction))
+                good += 1
+                # print("corr " + str(prediction))
+            # else:
+                # print("false " + str(prediction))
+        # print("acc: " + str(good/total))
+        return good/total
+
+    def pca_first_test(self):
+
+        good = 0
+        bad = 0
+        total = len(self.test_set)
+        for img, truth in self.test_set:
+            # total += 1
+            # print(truth)
+            ## get the reduced dimension version
+            test_point = numpy.matmul(self.pca_basis.T, img-self.pca_avg_vect)
+            test_point = numpy.matmul(test_point, self.v)
+
+            ## find shortest distance
+            min_dist = numpy.inf
+            prediction = -1
+            for point, label in self.points_for_knn:
+                dist = numpy.linalg.norm(point-test_point)
+                # print(label)
+                # print(dist)
+                if dist < min_dist:
+                    min_dist = dist
+                    prediction = label
+            if prediction == truth:
+                good += 1
+            #     print("corr")
+            # else:
+            #     bad += 1
+            #     print("false " + str(prediction))
+        # print(str(good) + " " + str(bad) + " " + str(total))
+        return good/total
 
 
 if __name__ == "__main__":
-    # printing.options['width'] = -1
-    # printing.options['dformat'] = '%.1f'
-    # machine = SVMLinear("./smallset")
-    # C = 1
-    #
-    # if len(sys.argv) > 1:
-    #     # assume it is p (preprocess)
-    #     C = int(sys.argv[1])
+
+    ## defaults for input vals
+    model = "pca"
+    cut1 = 130
+    cut2 = 90
+
+    if len(sys.argv) > 1:
+        # assume it is p (preprocess)
+        model = sys.argv[1]
+    if len(sys.argv) > 2:
+        # assume it is p (preprocess)
+        cut1 = int(sys.argv[2])
+    if len(sys.argv) > 3:
+        # assume it is p (preprocess)
+        cut2 = int(sys.argv[3])
     dataset = DataSet(40, 10)
     # dataset.load("./smallset")
     dataset.load("./Face Data for Homework/ATT")
 
-    # pca = PCA(dataset)
-    # avg, basis, points = pca.train(1000)
-    # pca.test()
+    if model == "pca":
+        # run PCA
+        pca = PCA(dataset)
+        pca.run(cut1)
 
-    lda = LDA(dataset)
-    basis, points = lda.train()
-    lda.test()
-
-    # pca.reconstruct(points[0])
-    # pca.run()
+    elif model == "lda":
+        ## run LDA
+        lda = LDA(dataset)
+        lda.run(cut1)
+    elif model == "both":
+        ## run combined
+        lda = LDA(dataset)
+        lda.pca_first(cut1, cut2)
+    else:
+        print("model must be [pca, lda, both]")
