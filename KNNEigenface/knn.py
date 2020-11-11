@@ -95,11 +95,12 @@ class PCA:
         cuts = []
 
         for fold in range(5):
+            print("fold " + str(fold))
             self.train_set, self.test_set = self.data.five_fold_data(fold)
 
-            avg, basis, points, eigs = self.train(130)
+            avg, basis, points, eigs = self.train(cut_val)
             # avg, basis, points, eigs = self.train((5-fold)*cut_val)
-            print(str(len(eigs)))
+            # print(str(len(eigs)))
             # print(",".join([str(eig) for eig in eigs]) + ",")
             acc = self.test()
             print(str(acc))
@@ -220,17 +221,21 @@ class LDA:
     def run(self, dims):
 
         for fold in range(5):
+            print("fold " + str(fold))
+
             self.train_set, self.test_set = self.data.five_fold_data(fold)
 
             basis, points, eigs = self.train(dims)
             # avg, basis, points, eigs = self.train((5-fold)*cut_val)
-            print(str(len(eigs)))
+            # print(str(len(eigs)))
             # print(",\n".join([str(eig) for eig in eigs]) + ",")
             acc = self.test()
             print(str(acc))
 
     def pca_first(self, pca_dims, lda_dims):
         for fold in range(5):
+            print("fold " + str(fold))
+
             self.train_set, self.test_set = self.data.five_fold_data(fold)
 
             pca = PCA(dataset)
@@ -248,7 +253,7 @@ class LDA:
 
             basis, points, eigs = self.train(lda_dims)
             # avg, basis, points, eigs = self.train((5-fold)*cut_val)
-            print(str(len(eigs)))
+            # print(str(len(eigs)))
             # print(",\n".join([str(eig) for eig in eigs]) + ",")
             acc = self.pca_first_test()
             print(str(acc))
@@ -422,6 +427,9 @@ if __name__ == "__main__":
     dataset = DataSet(40, 10)
     # dataset.load("./smallset")
     dataset.load("./Face Data for Homework/ATT")
+    print(model)
+    print(cut1)
+
 
     if model == "pca":
         # run PCA
