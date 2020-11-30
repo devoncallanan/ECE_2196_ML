@@ -1,6 +1,7 @@
 import numpy
 from PIL import Image
 from multiprocessing import Pool
+import random
 import os
 import sys
 
@@ -63,7 +64,7 @@ class DataSet:
 
         img = img.resize((120,90))
 
-        point = numpy.array([float(x[0]/255) for x in img.getdata()]).reshape((10800,1))
+        point = numpy.array([float(x[0]/255) for x in img.getdata()]).reshape((120*90,1))
         return point
 
 
@@ -108,32 +109,113 @@ class ANN:
         #  layer lengths
         self.l1_n = 90*120
         self.l2_n = 100
-        self.l3_n = 62
+        self.l3_n = 10
 
         # layer weight matrices
-        self.l1_w = numpy.random.rand(self.l1_n,self.l2_n)
+        self.l2_w = numpy.random.randn(self.l1_n,self.l2_n)
         # print(self.l1_w)
-        self.l2_w = numpy.random.rand(self.l2_n,self.l3_n)
+        self.l3_w = numpy.random.randn(self.l2_n,self.l3_n)
         # print(self.l2_w)
 
         # bias matrices
-        self.l1_b = numpy.ones((self.l1_n, 1))
-        self.l2_b = numpy.ones((self.l2_n, 1))
-        self.l3_b = numpy.ones((self.l3_n, 1))
+        self.l1_b = numpy.random.randn(self.l1_n, 1)
+        self.l2_b = numpy.random.randn(self.l2_n, 1)
+        self.l3_b = numpy.random.randn(self.l3_n, 1)
 
         self.train()
+        self.test()
 
     def train(self):
 
         #feed forward
-        for point, label in [dataset[500],dataset[501],dataset[502],dataset[503]]:
+        for _ in range(100):
+            print(_)
+            b2 = 0
+            b3 = 0
+            w2 = 0
+            w3 = 0
+            points = []
+            for arr in dataset.classes[:10]:
+                points += arr
+            random.shuffle(points)
+            for point, label in points:
+            # for point, label in self.dataset:
+                # print(label)
+                l2_z = self.l2_w.T.dot(point) + self.l2_b
+                l2_a = self.sigmoid(l2_z)
+                # print(l2_a.shape)
+                # print(l2_a)
+                # print("layer 2 " + str(l2_a.shape))
+                l3_z = self.l3_w.T.dot(l2_a) + self.l3_b
+                l3_a = self.sigmoid(l3_z)
+                # print(l3_a.shape)
+                # print(l3_a.T)
+                # print("layer 3 " + str(l3_a.shape))
+                cost_deriv = self.error_deriv(l3_a, label)
+                l3_loss_deriv = cost_deriv
+                # print(cost_deriv.shape)
+                # print(cost_deriv)
+                # l3_loss_deriv = cost_deriv*self.sig_deriv(l3_z)
+                l2_loss_deriv = self.l3_w.dot(l3_loss_deriv)*self.sig_deriv(l2_z)
+
+                # print("l3 and l2 loss derivs ")
+                # print(l3_loss_deriv)
+                # print(l2_loss_deriv)
+
+                # update weights
+                # alpha = .1
+                # b2 += alpha*l2_loss_deriv
+                #
+                # b3 += alpha*l3_loss_deriv
+                #
+                # w2 += alpha*(point.dot(l2_loss_deriv.T))
+                # w3 += alpha*(l2_a.dot(l3_loss_deriv.T))
+
+                ## online learning
+                alpha = .1
+                self.l2_b -= alpha*l2_loss_deriv
+                self.l2_w -= alpha*(point.dot(l2_loss_deriv.T))
+                alpha = .005
+                self.l3_b -= alpha*l3_loss_deriv
+                self.l3_w -= alpha*(l2_a.dot(l3_loss_deriv.T))
+
+
+
+                # error = self.cross_loss(l3_a, label)
+            # self.l2_b -= b2
+            # self.l3_b -= b3
+            # self.l2_w -= w2
+            # self.l3_w -= w3
+            # print(error)
+
+    def test(self):
+        #feed forward
+        correct = 0
+        total = 0
+        points = []
+        for arr in dataset.classes[:10]:
+            points += arr
+        for point, label in points:
+            total += 1
             # print(point)
-            l2_a = self.sigmoid(self.l1_w.T.dot(point) - self.l2_b)
-            print("layer 2 " + str(l2_a.shape))
-            l3_a = self.sigmoid(self.l2_w.T.dot(l2_a) - self.l3_b)
-            print("layer 3 " + str(l3_a.shape))
-            error = self.cross_loss(l3_a, label)
-            print(error)
+            # print(self.l2_w)
+            # print(self.l3_w)
+            # print(self.l2_b)
+            # print(point)
+            l2_a = self.sigmoid(self.l2_w.T.dot(point) - self.l2_b)
+            # print("layer 2 " + str(l2_a))
+            l3_a = self.sigmoid(self.l3_w.T.dot(l2_a) - self.l3_b)
+
+            print(str(label) + " " + str(l3_a.T))
+
+            guess = 0
+            for i in range(len(l3_a)):
+                if l3_a[i] > l3_a[guess]:
+                    guess = i
+            if guess == label:
+                correct += 1
+        print(float(correct)/total)
+
 
     def cross_loss(self, a, label):
         error = 0
@@ -145,13 +227,23 @@ class ANN:
             error -= e
         return error
 
-    def sig_deriv(self, a):
-        return (numpy.exp(-a))/(1 + numpy.exp(-a))**2
+    def error_deriv(self, a, label):
+        t_mat = numpy.zeros((10,1))
+        t_mat[label] = 1.
+        # print(str(label) + " " + str(a.T))
+        del_err = (a-t_mat)*a*(1-a)
+        # return a-t_mat
+        return del_err
+
+    def sig_deriv(self, z):
+        # print(z)
+        # return (numpy.exp(-z/100))/(1 + numpy.exp(-z/100))**2
+        return self.sigmoid(z)*(1-self.sigmoid(z))
 
     def sigmoid(self, z):
         # print(z)
         # print((1+numpy.exp(-z/100)))
-        return 1./(1+numpy.exp(-z/100))
+        return 1./(1+numpy.exp(-z/10))
 
 
 
