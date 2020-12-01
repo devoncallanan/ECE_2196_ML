@@ -121,7 +121,7 @@ class ANN:
         # quit()
 
         #feed forward
-        for _ in range(60):
+        for _ in range(40):
             # print(str(_) + "\r", end="")
             batch_it = 0
             batch_size = 1
@@ -152,12 +152,14 @@ class ANN:
 
 
                 ## online learning
-                decay = 1.05 - math.log(math.ceil((1+_)/10))/math.log(10)
-                decay = 1.01 - .1*math.ceil(_/10)
-                alpha = .3*decay
+                # decay = 1.05 - math.log(math.ceil((1+_)/10))/math.log(10)
+                decay = 1.01# - .1*math.ceil(_/10)
+                # alpha = .3*decay
+                alpha = .7
                 self.l2_b -= alpha*l2_grad
                 self.l2_w -= alpha*(point.dot(l2_grad.T))
-                alpha = .6*decay
+                # alpha = .6*decay
+                alpha = .7
                 self.l3_b -= alpha*l3_grad
                 self.l3_w -= alpha*(l2_a.dot(l3_grad.T))
 
@@ -202,11 +204,11 @@ class ANN:
                     guess = i
             if guess == label:
                 correct += 1
-
-            # img_vect = numpy.reshape(point, (90,120))
-            # Image.fromarray(img_vect).show()
-            # print(guess)
-            # input()
+            # else:
+            #     img_vect = numpy.reshape([255. if x[0] < 1 else 0. for x in point], (90,120))
+            #     Image.fromarray(img_vect).show()
+            #     print(guess)
+            #     input()
         print()
         print(float(correct)/total)
 
