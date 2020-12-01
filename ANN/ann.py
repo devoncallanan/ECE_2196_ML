@@ -1,9 +1,11 @@
 import numpy
+from scipy.sparse import csr_matrix
 from PIL import Image
 from multiprocessing import Pool
 import random
 import os
 import sys
+import math
 
 
 
@@ -38,33 +40,14 @@ class DataSet:
             pool = Pool(processes=6)
             files = [os.path.join(sample_dir,img_file) for img_file in img_files]
             self.classes[img_class] = [(point, img_class) for point in pool.map(DataSet.parallel_load, files)]
-            # print(self.classes[img_class])
-            # for img_file in img_files:
-            #     img = Image.open(os.path.join(sample_dir,img_file))
-            #
-            #     img = img.resize((120,90))
-            #
-            #
-            #     # read the image with pillow and create matrix of pixels
-            #     # point = numpy.array(img.getdata())
-            #     # print(list(img.getdata()))
-            #     # point= img.getdata()
-            #     point = numpy.array([float(x[0]) for x in img.getdata()])
-            #     # print(point)
-            #     if self.vector_size == -1:
-            #         self.vector_size = 2
-            #         # self.vector_size = len(point)
-            #     self.classes[img_class][img_num] = point, img_class
-            #     img_num += 1
-            #     self.total_points += 1
-            #     img.close()
+
 
     def parallel_load(file):
         img = Image.open(file)
 
         img = img.resize((120,90))
 
-        point = numpy.array([float(x[0]/255) for x in img.getdata()]).reshape((120*90,1))
+        point = numpy.array([ 1. if x[0] < 128 else 0. for x in img.getdata()]).reshape((120*90,1))
         return point
 
 
@@ -73,19 +56,21 @@ class DataSet:
         train = DataSet(self.num_classes, 50)
         test = DataSet(self.num_classes, 5)
 
-        train.total_points = int(self.total_points*(4/5))
-        test.total_points = int(self.total_points*(1/5))
+        train.total_points = self.num_classes*50
+        test.total_points = self.num_classes*5
 
 
         train.vector_size = self.vector_size
         test.vector_size = self.vector_size
 
-        bound1 = (fold_number)*2
-        bound2 = bound1 + 2
+
+
+
         for i in range(self.num_classes):
             master_group = self.classes[i]
-            train.classes[i] = master_group[0:bound1] + master_group[bound2:]
-            test.classes[i] = master_group[bound1:bound2]
+            random.shuffle(master_group)
+            train.classes[i] = master_group[0:50]
+            test.classes[i] = master_group[50:]
 
         return train, test
 
@@ -109,7 +94,7 @@ class ANN:
         #  layer lengths
         self.l1_n = 90*120
         self.l2_n = 100
-        self.l3_n = 10
+        self.l3_n = 62
 
         # layer weight matrices
         self.l2_w = numpy.random.randn(self.l1_n,self.l2_n)
@@ -127,86 +112,89 @@ class ANN:
 
     def train(self):
 
+        trainset, testset = self.dataset.split()
+
+        # point, label = testset[5]
+        # img_vect = numpy.reshape(point, (90,120))
+        # Image.fromarray(img_vect).show()
+
+        # quit()
+
         #feed forward
-        for _ in range(100):
-            print(_)
+        for _ in range(60):
+            # print(str(_) + "\r", end="")
+            batch_it = 0
+            batch_size = 1
             b2 = 0
             b3 = 0
             w2 = 0
             w3 = 0
+            error = 0
             points = []
-            for arr in dataset.classes[:10]:
+            for arr in trainset.classes[:self.l3_n]:
                 points += arr
             random.shuffle(points)
             for point, label in points:
-            # for point, label in self.dataset:
-                # print(label)
+                batch_it += 1
+
                 l2_z = self.l2_w.T.dot(point) + self.l2_b
                 l2_a = self.sigmoid(l2_z)
-                # print(l2_a.shape)
-                # print(l2_a)
-                # print("layer 2 " + str(l2_a.shape))
+
                 l3_z = self.l3_w.T.dot(l2_a) + self.l3_b
                 l3_a = self.sigmoid(l3_z)
-                # print(l3_a.shape)
-                # print(l3_a.T)
-                # print("layer 3 " + str(l3_a.shape))
+
+
+                ## backprop
+
                 cost_deriv = self.error_deriv(l3_a, label)
-                l3_loss_deriv = cost_deriv
-                # print(cost_deriv.shape)
-                # print(cost_deriv)
-                # l3_loss_deriv = cost_deriv*self.sig_deriv(l3_z)
-                l2_loss_deriv = self.l3_w.dot(l3_loss_deriv)*self.sig_deriv(l2_z)
+                l3_grad = cost_deriv
+                l2_grad = self.l3_w.dot(l3_grad)*self.sig_deriv(l2_z)
 
-                # print("l3 and l2 loss derivs ")
-                # print(l3_loss_deriv)
-                # print(l2_loss_deriv)
-
-                # update weights
-                # alpha = .1
-                # b2 += alpha*l2_loss_deriv
-                #
-                # b3 += alpha*l3_loss_deriv
-                #
-                # w2 += alpha*(point.dot(l2_loss_deriv.T))
-                # w3 += alpha*(l2_a.dot(l3_loss_deriv.T))
 
                 ## online learning
-                alpha = .1
-                self.l2_b -= alpha*l2_loss_deriv
-                self.l2_w -= alpha*(point.dot(l2_loss_deriv.T))
-                alpha = .005
-                self.l3_b -= alpha*l3_loss_deriv
-                self.l3_w -= alpha*(l2_a.dot(l3_loss_deriv.T))
+                decay = 1.05 - math.log(math.ceil((1+_)/10))/math.log(10)
+                decay = 1.01 - .1*math.ceil(_/10)
+                alpha = .3*decay
+                self.l2_b -= alpha*l2_grad
+                self.l2_w -= alpha*(point.dot(l2_grad.T))
+                alpha = .6*decay
+                self.l3_b -= alpha*l3_grad
+                self.l3_w -= alpha*(l2_a.dot(l3_grad.T))
 
+                # b2 += l2_grad
+                # w2 += (point.dot(l2_grad.T))
+                # b3 += l3_grad
+                # w3 += (l2_a.dot(l3_grad.T))
+                #
+                # if batch_it%batch_size == 0:
+                #     decay = 1.05 - math.log(math.ceil((1+_)/10))/math.log(10)
+                #     alpha = .1*decay
+                #     self.l2_b -= alpha*b2/batch_size
+                #     self.l2_w -= alpha*w2/batch_size
+                #     alpha = .2*decay
+                #     self.l3_b -= alpha*b3/batch_size
+                #     self.l3_w -= alpha*w3/batch_size
 
+                error += self.cross_loss(l3_a, label)
 
-                # error = self.cross_loss(l3_a, label)
-            # self.l2_b -= b2
-            # self.l3_b -= b3
-            # self.l2_w -= w2
-            # self.l3_w -= w3
-            # print(error)
+            print(str(error[0]/len(points)) + ",", end="")
 
     def test(self):
         #feed forward
+        trainset, testset = self.dataset.split()
         correct = 0
         total = 0
         points = []
-        for arr in dataset.classes[:10]:
+        for arr in testset.classes[:self.l3_n]:
             points += arr
         for point, label in points:
             total += 1
-            # print(point)
-            # print(self.l2_w)
-            # print(self.l3_w)
-            # print(self.l2_b)
-            # print(point)
+
             l2_a = self.sigmoid(self.l2_w.T.dot(point) - self.l2_b)
             # print("layer 2 " + str(l2_a))
             l3_a = self.sigmoid(self.l3_w.T.dot(l2_a) - self.l3_b)
 
-            print(str(label) + " " + str(l3_a.T))
+            # print(str(label) + " " + str(l3_a.T))
 
             guess = 0
             for i in range(len(l3_a)):
@@ -214,6 +202,12 @@ class ANN:
                     guess = i
             if guess == label:
                 correct += 1
+
+            # img_vect = numpy.reshape(point, (90,120))
+            # Image.fromarray(img_vect).show()
+            # print(guess)
+            # input()
+        print()
         print(float(correct)/total)
 
 
@@ -228,7 +222,7 @@ class ANN:
         return error
 
     def error_deriv(self, a, label):
-        t_mat = numpy.zeros((10,1))
+        t_mat = numpy.zeros((self.l3_n,1))
         t_mat[label] = 1.
         # print(str(label) + " " + str(a.T))
         del_err = (a-t_mat)*a*(1-a)
