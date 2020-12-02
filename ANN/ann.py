@@ -98,17 +98,17 @@ class ANN:
 
         # layer weight matrices
         self.l2_w = numpy.random.randn(self.l1_n,self.l2_n)
-        # print(self.l1_w)
         self.l3_w = numpy.random.randn(self.l2_n,self.l3_n)
-        # print(self.l2_w)
 
         # bias matrices
-        self.l1_b = numpy.random.randn(self.l1_n, 1)
         self.l2_b = numpy.random.randn(self.l2_n, 1)
         self.l3_b = numpy.random.randn(self.l3_n, 1)
 
+        print("~~~~training~~~~")
         self.train()
+        print("~~~~testing~~~~~")
         self.test()
+        print("~~~~done~~~~~~~~")
 
     def train(self):
 
@@ -121,8 +121,10 @@ class ANN:
         # quit()
 
         #feed forward
+
+        errs = []
         for _ in range(40):
-            # print(str(_) + "\r", end="")
+            print(str(_) + "\r", end="")
             batch_it = 0
             batch_size = 1
             b2 = 0
@@ -137,6 +139,7 @@ class ANN:
             for point, label in points:
                 batch_it += 1
 
+                # Feedforeward
                 l2_z = self.l2_w.T.dot(point) + self.l2_b
                 l2_a = self.sigmoid(l2_z)
 
@@ -145,41 +148,33 @@ class ANN:
 
 
                 ## backprop
-
                 cost_deriv = self.error_deriv(l3_a, label)
                 l3_grad = cost_deriv
                 l2_grad = self.l3_w.dot(l3_grad)*self.sig_deriv(l2_z)
 
 
                 ## online learning
-                # decay = 1.05 - math.log(math.ceil((1+_)/10))/math.log(10)
-                decay = 1.01# - .1*math.ceil(_/10)
-                # alpha = .3*decay
-                alpha = .7
+                # decay = 2 - math.log((1.1+_)/2.4, 10)
+                # print(decay)
+                # decay = 1
+                alpha = 1
+                # alpha = .7
                 self.l2_b -= alpha*l2_grad
                 self.l2_w -= alpha*(point.dot(l2_grad.T))
-                # alpha = .6*decay
-                alpha = .7
+                alpha = decay
+                # alpha = .7
                 self.l3_b -= alpha*l3_grad
                 self.l3_w -= alpha*(l2_a.dot(l3_grad.T))
 
-                # b2 += l2_grad
-                # w2 += (point.dot(l2_grad.T))
-                # b3 += l3_grad
-                # w3 += (l2_a.dot(l3_grad.T))
-                #
-                # if batch_it%batch_size == 0:
-                #     decay = 1.05 - math.log(math.ceil((1+_)/10))/math.log(10)
-                #     alpha = .1*decay
-                #     self.l2_b -= alpha*b2/batch_size
-                #     self.l2_w -= alpha*w2/batch_size
-                #     alpha = .2*decay
-                #     self.l3_b -= alpha*b3/batch_size
-                #     self.l3_w -= alpha*w3/batch_size
+                # error += self.cross_loss(l3_a, label)
 
-                error += self.cross_loss(l3_a, label)
-
-            print(str(error[0]/len(points)) + ",", end="")
+            # print(str(error[0]/len(points)) + ",", end="")
+            # errs.append(error[0]/len(points))
+            # if _%5 == 0:
+            #     print(_, end=",")
+            #     self.test()
+        # print(" errors ")
+        # print(",".join([str(err) for err in errs]))
 
     def test(self):
         #feed forward
@@ -204,12 +199,13 @@ class ANN:
                     guess = i
             if guess == label:
                 correct += 1
+            ## for printing incorrect guess images
             # else:
             #     img_vect = numpy.reshape([255. if x[0] < 1 else 0. for x in point], (90,120))
             #     Image.fromarray(img_vect).show()
             #     print(guess)
             #     input()
-        print()
+        # print("ACCURACY")
         print(float(correct)/total)
 
 
@@ -262,9 +258,5 @@ if __name__ == "__main__":
     dataset = DataSet(62, 55)
     # dataset.load("./smallset")
     dataset.load("./English/Hnd/Img")
-    # point, label = dataset[2000]
-    # print(label)
-    # img_vect = numpy.reshape(point, (90,120))
-    # Image.fromarray(img_vect).show()
 
     ann = ANN(dataset)
